@@ -10,6 +10,8 @@ import sys
 import thread
 from Crypto.Cipher import AES
 import binascii
+import argparse
+
 reload(sys)
 sys.setdefaultencoding('utf-8')
 
@@ -73,7 +75,7 @@ def prepare_mqtt(MQTT_SERVER, MQTT_PORT=1883):
     client.connect(MQTT_SERVER, MQTT_PORT, 60)
     return client
 
-def push_data(client, model, sid, cmd, data, id2name, PATH_FMT):
+def push_data(client, model, sid, cmd, data, id2name, PATH_FMT, force_retain):
     for key, value in data.items():
         if sid in id2name:
             dname = id2name[sid].decode('utf8')
@@ -85,7 +87,7 @@ def push_data(client, model, sid, cmd, data, id2name, PATH_FMT):
                              cmd=cmd,
                              prop=key)
 
-        client.publish(path, payload=value.upper(), qos=0)
+        client.publish(path, payload=value, qos=0, retain=force_retain)
         if path not in published_channels:
             print "Published to: ", path
             published_channels.add(path)
@@ -114,9 +116,14 @@ def ConfigSectionMap(Config, section):
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", help="Path to config file", default="mihome_listen.ini")
+    parser.add_argument("--force-retain", help="Push to mqtt as retain", default=False, action="store_true")
+    args = parser.parse_args()
+
     id2name = dict()
     Config = ConfigParser.ConfigParser()
-    Config.read("mihome_listen.ini")
+    Config.read(args.config)
     MQTT_SERVER = ConfigSectionMap(Config, "MQTT")['server']
     MQTT_PORT = ConfigSectionMap(Config, "MQTT")['port']
     PATH_FMT =  ConfigSectionMap(Config, "MQTT")['mqtt_path']
@@ -128,7 +135,7 @@ if __name__ == "__main__":
         id2name[i['did'].split('.')[1]] = i['name']
     client = prepare_mqtt(MQTT_SERVER, MQTT_PORT)
     #model, sid, cmd, data, gateway
-    cb = lambda m, s, c, d: push_data(client, m, s, c, d, id2name, PATH_FMT)
+    cb = lambda m, s, c, d: push_data(client, m, s, c, d, id2name, PATH_FMT, args.force_retain)
     connector = XiaomiConnector(data_callback=cb)
     node_list = connector.get_nodes()
     #print node_list
