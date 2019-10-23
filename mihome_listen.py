@@ -1,5 +1,5 @@
-__author__ = 'lxl'
 #!/usr/bin/python
+# __author__ = 'lxl'
 # -*- coding: utf-8 -*-
 
 from connector import *
@@ -75,7 +75,7 @@ def prepare_mqtt(MQTT_SERVER, MQTT_PORT=1883):
     client.connect(MQTT_SERVER, MQTT_PORT, 60)
     return client
 
-def push_data(client, model, sid, cmd, data, id2name, PATH_FMT, force_retain):
+def push_data(client, model, sid, cmd, data, id2name, PATH_FMT, value_formats, force_retain):
     for key, value in data.items():
         if sid in id2name:
             dname = id2name[sid].decode('utf8')
@@ -86,6 +86,12 @@ def push_data(client, model, sid, cmd, data, id2name, PATH_FMT, force_retain):
                              sid=sid,
                              cmd=cmd,
                              prop=key)
+
+        for fmt in value_formats:
+            if (fmt['prop'] and fmt['prop'] != key) or (fmt['model'] and fmt['model'] != model):
+                continue
+            if fmt['float_divider']:
+                value = float(value) / fmt['float_divider']
 
         client.publish(path, payload=value, qos=0, retain=force_retain)
         if path not in published_channels:
@@ -127,7 +133,12 @@ if __name__ == "__main__":
     MQTT_SERVER = ConfigSectionMap(Config, "MQTT")['server']
     MQTT_PORT = ConfigSectionMap(Config, "MQTT")['port']
     PATH_FMT =  ConfigSectionMap(Config, "MQTT")['mqtt_path']
-    devices = ConfigSectionMap(Config, "devices")['sub_devices']
+    devices = ConfigSectionMap(Config, "format")['sub_devices']
+    formats = ConfigSectionMap(Config, "format")['value_formats']
+    if formats:
+        formats = json.loads(formats.decode('utf-8'))
+    else:
+        formats = []
 
     user_key = Config._sections['user_key']
     data = json.loads(devices.decode('utf-8'))
@@ -135,7 +146,7 @@ if __name__ == "__main__":
         id2name[i['did'].split('.')[1]] = i['name']
     client = prepare_mqtt(MQTT_SERVER, MQTT_PORT)
     #model, sid, cmd, data, gateway
-    cb = lambda m, s, c, d: push_data(client, m, s, c, d, id2name, PATH_FMT, args.force_retain)
+    cb = lambda m, s, c, d: push_data(client, m, s, c, d, id2name, PATH_FMT, formats, args.force_retain)
     connector = XiaomiConnector(data_callback=cb)
     node_list = connector.get_nodes()
     #print node_list
